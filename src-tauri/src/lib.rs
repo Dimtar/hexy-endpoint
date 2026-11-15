@@ -210,11 +210,16 @@ async fn reconcile(config: &Config, password: &str) -> Result<SyncResult, String
         .map(|s| {
             let k = key(&s.name);
             let m = after.get(&k);
+            let mut error = errors.remove(&k);
+            if error.is_none() && wanted.contains(&k) && m.is_none() {
+                // The OS reported success but the mount is not there.
+                error = Some("The mount did not appear. Click Sync now to try again.".into());
+            }
             ShareView {
                 wanted: wanted.contains(&k),
                 mounted: m.is_some(),
                 location: m.map(|m| m.location.clone()),
-                error: errors.remove(&k),
+                error,
                 name: s.name,
                 comment: s.comment,
             }
@@ -406,8 +411,10 @@ fn save_settings(app: AppHandle, input: SettingsInput) -> Result<Snapshot, Strin
         }
         inner.config.host = host;
         inner.config.username = username;
-        // A choice made for one server does not carry over to another.
-        inner.config.chosen = input.chosen && !server_changed;
+        // The window only offers the choice once it is signed in, and shows
+        // it when Save is clicked, so it holds across an address change:
+        // the shares remount under the new address.
+        inner.config.chosen = input.chosen;
         inner.config.map_all = input.map_all;
         inner.config.selected = input.selected;
         inner.config.autostart = input.autostart;

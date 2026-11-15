@@ -5,8 +5,12 @@ use core_foundation::dictionary::{CFMutableDictionary, CFMutableDictionaryRef};
 use core_foundation::string::{CFString, CFStringRef};
 use core_foundation::url::{CFURL, CFURLRef};
 use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
+use std::collections::HashMap;
+use std::net::{IpAddr, ToSocketAddrs};
 use std::process::Command;
 use std::ptr;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 #[link(name = "NetFS", kind = "framework")]
 extern "C" {
@@ -29,11 +33,56 @@ pub fn mounted(host: &str) -> Vec<Mounted> {
     };
     String::from_utf8_lossy(&out.stdout)
         .lines()
-        .filter_map(|line| parse_mount_line(line, host))
+        .filter_map(parse_mount_line)
+        .filter(|(server, _)| same_server(server, host))
+        .map(|(_, m)| m)
         .collect()
 }
 
-fn parse_mount_line(line: &str, host: &str) -> Option<Mounted> {
+/// Whether two addresses are the same machine. macOS will not mount a share
+/// twice from one server, so a share mounted via the server's IP has to count
+/// as mounted when the app is configured with its name, and the reverse.
+fn same_server(a: &str, b: &str) -> bool {
+    if a.eq_ignore_ascii_case(b) {
+        return true;
+    }
+    let (a, b) = (resolve(a), resolve(b));
+    a.iter().any(|ip| b.contains(ip))
+}
+
+/// Resolves a host (optionally `host:port`) to its addresses, remembering
+/// the answer for a while so the once-a-minute sync does not hammer DNS.
+fn resolve(host: &str) -> Vec<IpAddr> {
+    const KEEP: Duration = Duration::from_secs(600);
+    static CACHE: Mutex<Option<HashMap<String, (Instant, Vec<IpAddr>)>>> = Mutex::new(None);
+
+    let name = match host.rsplit_once(':') {
+        Some((name, port)) if !name.contains(':') && port.parse::<u16>().is_ok() => name,
+        _ => host,
+    };
+    let key = name.to_lowercase();
+    if let Some((at, ips)) = CACHE.lock().unwrap().get_or_insert_with(HashMap::new).get(&key) {
+        if at.elapsed() < KEEP {
+            return ips.clone();
+        }
+    }
+    let ips: Vec<IpAddr> = match name.parse::<IpAddr>() {
+        Ok(ip) => vec![ip],
+        Err(_) => (name, 445)
+            .to_socket_addrs()
+            .map(|addrs| addrs.map(|a| a.ip()).collect())
+            .unwrap_or_default(),
+    };
+    CACHE
+        .lock()
+        .unwrap()
+        .get_or_insert_with(HashMap::new)
+        .insert(key, (Instant::now(), ips.clone()));
+    ips
+}
+
+/// Returns the server a mount came from, and the mount.
+fn parse_mount_line(line: &str) -> Option<(String, Mounted)> {
     let rest = line.strip_prefix("//")?;
     let (source, rest) = rest.split_once(" on ")?;
     let (path, flags) = rest.rsplit_once(" (")?;
@@ -42,13 +91,13 @@ fn parse_mount_line(line: &str, host: &str) -> Option<Mounted> {
     }
     let (server, share) = source.split_once('/')?;
     let server = server.rsplit_once('@').map_or(server, |(_, h)| h);
-    if !server.eq_ignore_ascii_case(host) {
-        return None;
-    }
-    Some(Mounted {
-        share: percent_decode_str(share).decode_utf8_lossy().into_owned(),
-        location: path.to_string(),
-    })
+    Some((
+        server.to_string(),
+        Mounted {
+            share: percent_decode_str(share).decode_utf8_lossy().into_owned(),
+            location: path.to_string(),
+        },
+    ))
 }
 
 pub fn mount(host: &str, share: &str, user: &str, password: &str) -> Result<(), String> {
@@ -127,20 +176,28 @@ mod tests {
 
     #[test]
     fn parses_smb_mount_lines() {
-        let m = parse_mount_line(
+        let (server, m) = parse_mount_line(
             "//dan@192.168.1.10/My%20Media on /Volumes/My Media (smbfs, nodev, nosuid, mounted by dan)",
-            "192.168.1.10",
         )
         .unwrap();
+        assert_eq!(server, "192.168.1.10");
         assert_eq!(m.share, "My Media");
         assert_eq!(m.location, "/Volumes/My Media");
     }
 
     #[test]
-    fn ignores_other_hosts_and_filesystems() {
-        assert!(parse_mount_line("//dan@other/x on /Volumes/x (smbfs, nodev)", "nas").is_none());
-        assert!(parse_mount_line("/dev/disk3s1 on / (apfs, local)", "nas").is_none());
-        assert!(parse_mount_line("//dan@nas/x on /Volumes/x (afpfs, nodev)", "nas").is_none());
+    fn ignores_other_filesystems() {
+        assert!(parse_mount_line("/dev/disk3s1 on / (apfs, local)").is_none());
+        assert!(parse_mount_line("//dan@nas/x on /Volumes/x (afpfs, nodev)").is_none());
+    }
+
+    #[test]
+    fn matches_a_server_by_name_or_address() {
+        assert!(same_server("NAS", "nas"));
+        assert!(same_server("localhost", "127.0.0.1"));
+        assert!(same_server("127.0.0.1:4455", "localhost"));
+        assert!(!same_server("192.168.1.10", "192.168.1.11"));
+        assert!(!same_server("no-such-host.invalid", "127.0.0.1"));
     }
 }
 
