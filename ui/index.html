@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hexy Endpoint</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 1.5 21 6.75v10.5L12 22.5 3 17.25V6.75z" />
+      </svg>
+      <div>
+        <h1>Hexy Endpoint</h1>
+        <p id="status">Loading…</p>
+      </div>
+    </header>
+
+    <div id="update" class="banner" hidden>
+      <span id="update-text"></span>
+      <button id="update-btn" type="button">Install and restart</button>
+    </div>
+
+    <form id="form" autocomplete="off">
+      <section>
+        <h2>Server</h2>
+        <label>
+          HexOS server address
+          <input id="host" placeholder="192.168.1.10" spellcheck="false" autocapitalize="off" />
+        </label>
+        <label>
+          Username
+          <input id="username" spellcheck="false" autocapitalize="off" />
+        </label>
+        <label>
+          Password
+          <input id="password" type="password" />
+        </label>
+      </section>
+
+      <section>
+        <h2>Shares</h2>
+        <label class="row">
+          <input type="radio" name="mode" id="mode-all" value="all" />
+          Mount every share
+        </label>
+        <label class="row">
+          <input type="radio" name="mode" id="mode-pick" value="pick" />
+          Only the shares I choose
+        </label>
+        <ul id="shares"></ul>
+      </section>
+
+      <section>
+        <h2>Options</h2>
+        <label class="row">
+          <input type="checkbox" id="autostart" />
+          Start when I log in
+        </label>
+        <label class="row">
+          <input type="checkbox" id="auto-update" />
+          Install updates automatically
+        </label>
+      </section>
+
+      <p id="error" role="alert" hidden></p>
+
+      <footer>
+        <button type="submit" class="primary" id="save">Save</button>
+        <button type="button" id="sync">Sync now</button>
+        <button type="button" id="signout">Sign out</button>
+        <span id="version"></span>
+      </footer>
+    </form>
+
+    <script src="main.js"></script>
+  </body>
+</html>
