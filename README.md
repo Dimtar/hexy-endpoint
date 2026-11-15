@@ -179,5 +179,12 @@ empty if the key has no password). The matching public key is in
 `src-tauri/tauri.conf.json`. Losing the private key means existing installs can
 no longer be updated, so keep a backup.
 
+macOS builds are signed with a self-signed certificate when the
+`MACOS_SIGNING_P12` (base64 of a `.p12`) and `MACOS_SIGNING_P12_PASSWORD`
+secrets are set. It does not make Gatekeeper trust the app, but it gives every
+release the same identity, so macOS keeps the "Always Allow" a user gave the
+app for its saved password instead of asking again after each update. The
+certificate's name must be `Hexy Endpoint Self-Signed`.
+
 The builds are not code-signed with Apple or Microsoft certificates, so macOS
 Gatekeeper and Windows SmartScreen will warn on first launch.

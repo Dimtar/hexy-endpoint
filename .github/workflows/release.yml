@@ -47,6 +47,31 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
+      # Sign every macOS build with the same certificate, so macOS treats
+      # each update as the same app and keeps its keychain permission.
+      # Without the secret the build falls back to an ad-hoc signature.
+      - name: Import macOS signing certificate
+        if: runner.os == 'macOS'
+        env:
+          P12: ${{ secrets.MACOS_SIGNING_P12 }}
+          P12_PASSWORD: ${{ secrets.MACOS_SIGNING_P12_PASSWORD }}
+        run: |
+          if [ -z "$P12" ]; then
+            echo "No signing certificate configured; using an ad-hoc signature."
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          echo "APPLE_SIGNING_IDENTITY=Hexy Endpoint Self-Signed" >> "$GITHUB_ENV"
+          echo "EXPECT_STABLE_SIGNATURE=1" >> "$GITHUB_ENV"
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -59,6 +84,16 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           args: ${{ matrix.args }}
+      - name: Check the macOS signature is stable
+        if: runner.os == 'macOS' && env.EXPECT_STABLE_SIGNATURE == '1'
+        run: |
+          app="$(find src-tauri/target -path '*bundle/macos/*.app' -maxdepth 6 | head -1)"
+          requirement="$(codesign -d -r- "$app" 2>&1)"
+          echo "$requirement"
+          echo "$requirement" | grep -q 'certificate leaf' || {
+            echo "The app is not signed with the release certificate." >&2
+            exit 1
+          }
 
   # Fixed-name copies of the installers, for the README's download links.
   download-links:

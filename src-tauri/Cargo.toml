@@ -1,6 +1,6 @@
 [package]
 name = "hexy-endpoint"
-version = "0.1.6"
+version = "0.1.7"
 description = "Tray app that keeps HexOS shares mounted"
 edition = "2021"
 
