@@ -143,3 +143,33 @@ mod tests {
         assert!(parse_mount_line("//dan@nas/x on /Volumes/x (afpfs, nodev)", "nas").is_none());
     }
 }
+
+#[cfg(test)]
+mod live_tests {
+    use super::*;
+
+    /// Mounts and unmounts a share on a real server. Run with
+    /// `HEXY_TEST_HOST=... HEXY_TEST_USER=... HEXY_TEST_PASS=... HEXY_TEST_SHARE=... cargo test -- --ignored`.
+    /// `HEXY_TEST_HOST` may carry a port, e.g. `127.0.0.1:4455`.
+    #[test]
+    #[ignore]
+    fn mounts_and_unmounts_a_real_share() {
+        let host = std::env::var("HEXY_TEST_HOST").expect("HEXY_TEST_HOST");
+        let user = std::env::var("HEXY_TEST_USER").expect("HEXY_TEST_USER");
+        let pass = std::env::var("HEXY_TEST_PASS").expect("HEXY_TEST_PASS");
+        let share = std::env::var("HEXY_TEST_SHARE").expect("HEXY_TEST_SHARE");
+
+        assert!(mount(&host, &share, &user, "definitely-wrong").is_err());
+        mount(&host, &share, &user, &pass).expect("mount failed");
+        let found = mounted(&host)
+            .into_iter()
+            .find(|m| m.share == share)
+            .expect("share not in mount table");
+        println!("mounted at {}", found.location);
+        assert!(std::path::Path::new(&found.location).is_dir());
+        // Mounting again is a no-op, not an error.
+        mount(&host, &share, &user, &pass).expect("second mount failed");
+        unmount(&host, &found).expect("unmount failed");
+        assert!(mounted(&host).into_iter().all(|m| m.share != share));
+    }
+}
