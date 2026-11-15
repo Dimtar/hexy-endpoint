@@ -377,11 +377,17 @@ fn save_settings(app: AppHandle, input: SettingsInput) -> Result<Snapshot, Strin
     }
     let shared = app.state::<Shared>();
     let password = input.password.filter(|p| !p.is_empty());
-    let server_changed = {
+    let (host_changed, user_changed) = {
         let inner = shared.inner.lock().unwrap();
-        !inner.config.host.eq_ignore_ascii_case(&host) || inner.config.username != username
+        (
+            !inner.config.host.eq_ignore_ascii_case(&host),
+            inner.config.username != username,
+        )
     };
-    if password.is_none() && (server_changed || load_password().is_none()) {
+    let server_changed = host_changed || user_changed;
+    // The saved password is kept when only the address changes (an IP
+    // swapped for a name, say); a different account needs its own.
+    if password.is_none() && (user_changed || load_password().is_none()) {
         return Err("Enter the password for this account.".into());
     }
     if server_changed {

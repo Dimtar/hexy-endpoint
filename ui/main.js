@@ -164,6 +164,12 @@ $("form").addEventListener("submit", async (event) => {
       },
     });
     els.password.value = "";
+    // Changing server clears the all-or-some choice, so ask again.
+    if (!next.config.chosen) {
+      els.modeAll.checked = false;
+      els.modePick.checked = false;
+      picked = new Set();
+    }
     render(next);
   } catch (err) {
     showError(String(err));
