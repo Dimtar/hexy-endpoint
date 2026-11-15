@@ -32,6 +32,12 @@ struct Config {
     selected: BTreeSet<String>,
     autostart: bool,
     auto_update: bool,
+    /// Tray icon style: "color" (the app icon) or "minimal" (a plain
+    /// outline that matches the menu bar or taskbar).
+    tray_icon: String,
+    /// Windows only: the drive letter to use for a share, keyed by the
+    /// share's lower-cased name. Shares not listed get a free letter.
+    drive_letters: BTreeMap<String, String>,
     /// Shares this app mounted itself. Only these are ever unmounted, so a
     /// share the user mounted by hand is left alone.
     managed: BTreeSet<String>,
@@ -47,6 +53,8 @@ impl Default for Config {
             selected: BTreeSet::new(),
             autostart: true,
             auto_update: true,
+            tray_icon: "color".into(),
+            drive_letters: BTreeMap::new(),
             managed: BTreeSet::new(),
         }
     }
@@ -88,6 +96,8 @@ struct Snapshot {
     last_sync: Option<u64>,
     update: Option<String>,
     version: String,
+    /// Whether this platform mounts shares on drive letters.
+    drive_letters_supported: bool,
 }
 
 fn keyring_entry() -> Result<keyring::Entry, String> {
@@ -123,12 +133,46 @@ fn snapshot(app: &AppHandle) -> Snapshot {
         last_sync: inner.last_sync,
         update: inner.update.clone(),
         version: app.package_info().version.to_string(),
+        drive_letters_supported: cfg!(windows),
+    }
+}
+
+const TRAY_MINIMAL_BLACK: &[u8] = include_bytes!("../icons/tray-minimal-black.png");
+const TRAY_MINIMAL_WHITE: &[u8] = include_bytes!("../icons/tray-minimal-white.png");
+
+/// Sets the tray icon to the chosen style. On macOS the minimal icon is a
+/// template image, which the menu bar recolours for light and dark itself;
+/// elsewhere the black or white outline is picked to suit the taskbar.
+fn apply_tray_icon(app: &AppHandle, style: &str) {
+    let Some(tray) = app.tray_by_id("main") else {
+        return;
+    };
+    let minimal = style == "minimal";
+    let icon = if minimal {
+        let bytes = if cfg!(target_os = "macos") || !platform::taskbar_is_dark() {
+            TRAY_MINIMAL_BLACK
+        } else {
+            TRAY_MINIMAL_WHITE
+        };
+        tauri::image::Image::from_bytes(bytes).ok()
+    } else {
+        app.default_window_icon().cloned()
+    };
+    if let Some(icon) = icon {
+        let _ = tray.set_icon(Some(icon));
+        #[cfg(target_os = "macos")]
+        let _ = tray.set_icon_as_template(minimal);
     }
 }
 
 /// Pushes the current state to the window and the tray tooltip.
 fn publish(app: &AppHandle) {
     let snap = snapshot(app);
+    // Re-applied on every publish so the minimal icon follows a change of
+    // the system's light or dark theme.
+    if snap.config.tray_icon == "minimal" {
+        apply_tray_icon(app, "minimal");
+    }
     let mounted = snap.shares.iter().filter(|s| s.mounted).count();
     let tooltip = if snap.config.host.is_empty() || !snap.has_password {
         "Hexy Endpoint: not signed in".to_string()
@@ -173,16 +217,48 @@ async fn reconcile(config: &Config, password: &str) -> Result<SyncResult, String
     let mut managed: BTreeSet<String> = config.managed.iter().map(|s| key(s)).collect();
     let mut errors: BTreeMap<String, String> = BTreeMap::new();
 
+    let letter_for = |k: &str| {
+        config
+            .drive_letters
+            .get(k)
+            .and_then(|l| l.chars().next())
+            .filter(|_| cfg!(windows))
+    };
+    // Letters spoken for, so automatic assignment leaves them free.
+    let reserved: Vec<char> = wanted.iter().filter_map(|k| letter_for(k)).collect();
+
     for share in &remote {
         let k = key(&share.name);
-        if wanted.contains(&k) && !before.contains_key(&k) {
-            match platform::mount(&config.host, &share.name, &config.username, password) {
-                Ok(()) => {
-                    managed.insert(k);
-                }
-                Err(e) => {
-                    errors.insert(k, e);
-                }
+        if !wanted.contains(&k) {
+            continue;
+        }
+        let letter = letter_for(&k);
+        if let Some(current) = before.get(&k) {
+            // Already mounted. Move it only if we mounted it and it is on
+            // a different letter from the one now asked for.
+            let on_wrong_letter = letter
+                .is_some_and(|l| !current.location.eq_ignore_ascii_case(&format!("{l}:")));
+            if !(on_wrong_letter && managed.contains(&k)) {
+                continue;
+            }
+            if let Err(e) = platform::unmount(&config.host, current) {
+                errors.insert(k, e);
+                continue;
+            }
+        }
+        match platform::mount(
+            &config.host,
+            &share.name,
+            &config.username,
+            password,
+            letter,
+            &reserved,
+        ) {
+            Ok(()) => {
+                managed.insert(k);
+            }
+            Err(e) => {
+                errors.insert(k, e);
             }
         }
     }
@@ -363,6 +439,34 @@ struct SettingsInput {
     selected: BTreeSet<String>,
     autostart: bool,
     auto_update: bool,
+    #[serde(default)]
+    tray_icon: String,
+    #[serde(default)]
+    drive_letters: BTreeMap<String, String>,
+}
+
+/// Normalises the drive letters chosen in the window: one letter D-Z per
+/// share, no letter used twice.
+fn clean_drive_letters(
+    input: BTreeMap<String, String>,
+) -> Result<BTreeMap<String, String>, String> {
+    let mut out = BTreeMap::new();
+    let mut used = BTreeSet::new();
+    for (share, letter) in input {
+        let letter = letter.trim().trim_end_matches(':').to_ascii_uppercase();
+        let mut chars = letter.chars();
+        let (Some(c), None) = (chars.next(), chars.next()) else {
+            return Err(format!("\"{letter}\" is not a drive letter."));
+        };
+        if !('D'..='Z').contains(&c) {
+            return Err(format!("Drive letters must be between D and Z, not {c}."));
+        }
+        if !used.insert(c) {
+            return Err(format!("Drive {c}: is chosen for more than one share."));
+        }
+        out.insert(key(&share), c.to_string());
+    }
+    Ok(out)
 }
 
 #[tauri::command]
@@ -380,6 +484,7 @@ fn save_settings(app: AppHandle, input: SettingsInput) -> Result<Snapshot, Strin
     if username.is_empty() {
         return Err("Enter a username.".into());
     }
+    let drive_letters = clean_drive_letters(input.drive_letters)?;
     let shared = app.state::<Shared>();
     let password = input.password.filter(|p| !p.is_empty());
     let (host_changed, user_changed) = {
@@ -419,9 +524,16 @@ fn save_settings(app: AppHandle, input: SettingsInput) -> Result<Snapshot, Strin
         inner.config.selected = input.selected;
         inner.config.autostart = input.autostart;
         inner.config.auto_update = input.auto_update;
+        inner.config.drive_letters = drive_letters;
+        inner.config.tray_icon = if input.tray_icon == "minimal" {
+            "minimal".into()
+        } else {
+            "color".into()
+        };
         save_config(&shared, &inner.config);
     }
     apply_autostart(&app, input.autostart);
+    apply_tray_icon(&app, &input.tray_icon);
     let _ = shared.trigger.send(());
     Ok(snapshot(&app))
 }
@@ -518,6 +630,7 @@ pub fn run() {
             let (tx, rx) = unbounded_channel();
             let signed_in = !config.host.is_empty() && load_password().is_some();
             let autostart = config.autostart;
+            let tray_style = config.tray_icon.clone();
             app.manage(Shared {
                 inner: Mutex::new(Inner {
                     config,
@@ -568,6 +681,7 @@ pub fn run() {
                 tray = tray.icon(icon.clone());
             }
             tray.build(app)?;
+            apply_tray_icon(&handle, &tray_style);
 
             apply_autostart(&handle, autostart);
             spawn_sync_loop(handle.clone(), rx);

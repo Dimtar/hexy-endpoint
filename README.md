@@ -89,6 +89,18 @@ then click **Save**. Shares you untick are unmounted.
   backwards, under **This PC** in Explorer.
 - **Linux:** each share appears in your file manager's network locations.
 
+### Choosing drive letters (Windows)
+
+By default each share takes the next free letter. To pick one yourself, click
+the cog next to the share, choose a letter, and click **Save**. The share is
+remounted on that letter and keeps it from then on. **Automatic** goes back to
+the next free letter.
+
+<img src="docs/images/windows.png" width="380" alt="The window on Windows, with the drive letter picker open under the Media share and set to M:">
+
+A letter can only be given to one share. If the letter is already used by
+another drive when the share is mounted, the share shows a red dot and says so.
+
 ### Day to day
 
 - **It lives in the system tray** (the menu bar on macOS). Closing the window
@@ -102,6 +114,9 @@ then click **Save**. Shares you untick are unmounted.
 - **It keeps itself up to date.** Untick **Install updates automatically** if
   you would rather be asked, and use **Check for updates** to look for a new
   version at any time.
+- **The tray icon has two styles.** Under **Options**, **Tray icon** switches
+  between the colour icon and a minimal outline that matches the menu bar or
+  taskbar. Click **Save** to apply.
 - **Sign out** unmounts the shares the app mounted and forgets the password.
 - **Quit** leaves the shares mounted until you log out or eject them.
 
@@ -122,7 +137,7 @@ The line under the app's name says what the problem is.
 | | Share discovery | Mounting | Where shares appear |
 |---|---|---|---|
 | macOS | SMB (built in) | NetFS framework | `/Volumes/<share>` |
-| Windows | SMB (built in) | Windows networking API | Drive letters, from `Z:` downwards |
+| Windows | SMB (built in) | Windows networking API | Drive letters, from `Z:` downwards or as chosen |
 | Linux | SMB (built in) | `gio mount` (gvfs) | Your file manager's network locations |
 
 Shares are discovered over SMB itself, so any account that can open the shares

@@ -1,6 +1,6 @@
 [package]
 name = "hexy-endpoint"
-version = "0.1.5"
+version = "0.1.6"
 description = "Tray app that keeps HexOS shares mounted"
 edition = "2021"
 
@@ -12,7 +12,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
@@ -32,6 +32,7 @@ windows-sys = { version = "0.59", features = [
   "Win32_Foundation",
   "Win32_NetworkManagement_WNet",
   "Win32_Storage_FileSystem",
+  "Win32_System_Registry",
 ] }
 
 [profile.release]

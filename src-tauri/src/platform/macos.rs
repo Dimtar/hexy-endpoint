@@ -100,7 +100,14 @@ fn parse_mount_line(line: &str) -> Option<(String, Mounted)> {
     ))
 }
 
-pub fn mount(host: &str, share: &str, user: &str, password: &str) -> Result<(), String> {
+pub fn mount(
+    host: &str,
+    share: &str,
+    user: &str,
+    password: &str,
+    _drive_letter: Option<char>,
+    _reserved_letters: &[char],
+) -> Result<(), String> {
     let url = format!(
         "smb://{host}/{}",
         utf8_percent_encode(share, NON_ALPHANUMERIC)
@@ -144,6 +151,11 @@ pub fn mount(host: &str, share: &str, user: &str, password: &str) -> Result<(), 
         60 | 64 | 65 => Err("the server could not be reached".into()),
         other => Err(format!("mount failed (error {other})")),
     }
+}
+
+/// Unused on macOS: the menu bar recolours template icons itself.
+pub fn taskbar_is_dark() -> bool {
+    true
 }
 
 pub fn unmount(_host: &str, m: &Mounted) -> Result<(), String> {
@@ -216,8 +228,8 @@ mod live_tests {
         let pass = std::env::var("HEXY_TEST_PASS").expect("HEXY_TEST_PASS");
         let share = std::env::var("HEXY_TEST_SHARE").expect("HEXY_TEST_SHARE");
 
-        assert!(mount(&host, &share, &user, "definitely-wrong").is_err());
-        mount(&host, &share, &user, &pass).expect("mount failed");
+        assert!(mount(&host, &share, &user, "definitely-wrong", None, &[]).is_err());
+        mount(&host, &share, &user, &pass, None, &[]).expect("mount failed");
         let found = mounted(&host)
             .into_iter()
             .find(|m| m.share == share)
@@ -225,7 +237,7 @@ mod live_tests {
         println!("mounted at {}", found.location);
         assert!(std::path::Path::new(&found.location).is_dir());
         // Mounting again is a no-op, not an error.
-        mount(&host, &share, &user, &pass).expect("second mount failed");
+        mount(&host, &share, &user, &pass, None, &[]).expect("second mount failed");
         unmount(&host, &found).expect("unmount failed");
         assert!(mounted(&host).into_iter().all(|m| m.share != share));
     }

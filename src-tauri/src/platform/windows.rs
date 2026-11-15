@@ -5,6 +5,7 @@ use windows_sys::Win32::NetworkManagement::WNet::{
     RESOURCETYPE_DISK,
 };
 use windows_sys::Win32::Storage::FileSystem::GetLogicalDrives;
+use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
 
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -37,16 +38,37 @@ pub fn mounted(host: &str) -> Vec<Mounted> {
         .collect()
 }
 
-/// Highest free drive letter, skipping A-C.
-fn free_letter() -> Option<char> {
+fn in_use(letter: char) -> bool {
     let used = unsafe { GetLogicalDrives() };
-    ('D'..='Z')
-        .rev()
-        .find(|&l| used & (1 << (l as u32 - 'A' as u32)) == 0 && remote_of(l).is_none())
+    used & (1 << (letter as u32 - 'A' as u32)) != 0 || remote_of(letter).is_some()
 }
 
-pub fn mount(host: &str, share: &str, user: &str, password: &str) -> Result<(), String> {
-    let letter = free_letter().ok_or("no free drive letter")?;
+/// Highest free drive letter, skipping A-C and any letter set aside for
+/// another share.
+fn free_letter(reserved: &[char]) -> Option<char> {
+    ('D'..='Z')
+        .rev()
+        .find(|l| !reserved.contains(l) && !in_use(*l))
+}
+
+/// `drive_letter` is the letter the user picked for this share, if any;
+/// otherwise a free one is used, avoiding `reserved_letters`.
+pub fn mount(
+    host: &str,
+    share: &str,
+    user: &str,
+    password: &str,
+    drive_letter: Option<char>,
+    reserved_letters: &[char],
+) -> Result<(), String> {
+    let letter = match drive_letter.map(|l| l.to_ascii_uppercase()) {
+        Some(l) if !('D'..='Z').contains(&l) => {
+            return Err(format!("{l}: cannot be used as a drive letter"))
+        }
+        Some(l) if in_use(l) => return Err(format!("Drive {l}: is already in use")),
+        Some(l) => l,
+        None => free_letter(reserved_letters).ok_or("no free drive letter")?,
+    };
     let local = wide(&format!("{letter}:"));
     let remote = wide(&format!("\\\\{host}\\{share}"));
     let user = wide(user);
@@ -67,6 +89,26 @@ pub fn mount(host: &str, share: &str, user: &str, password: &str) -> Result<(), 
         53 | 67 => Err("the server or share could not be found".into()),
         other => Err(std::io::Error::from_raw_os_error(other as i32).to_string()),
     }
+}
+
+/// Whether the taskbar uses the dark theme (the Windows default).
+pub fn taskbar_is_dark() -> bool {
+    let key = wide("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
+    let value = wide("SystemUsesLightTheme");
+    let mut light: u32 = 0;
+    let mut size = std::mem::size_of::<u32>() as u32;
+    let rc = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            key.as_ptr(),
+            value.as_ptr(),
+            RRF_RT_REG_DWORD,
+            std::ptr::null_mut(),
+            &mut light as *mut u32 as *mut _,
+            &mut size,
+        )
+    };
+    rc != 0 || light == 0
 }
 
 pub fn unmount(_host: &str, m: &Mounted) -> Result<(), String> {

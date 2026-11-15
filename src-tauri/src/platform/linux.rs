@@ -46,7 +46,14 @@ fn parse_gio_line(line: &str, host: &str) -> Option<Mounted> {
     })
 }
 
-pub fn mount(host: &str, share: &str, user: &str, password: &str) -> Result<(), String> {
+pub fn mount(
+    host: &str,
+    share: &str,
+    user: &str,
+    password: &str,
+    _drive_letter: Option<char>,
+    _reserved_letters: &[char],
+) -> Result<(), String> {
     let mut child = Command::new("gio")
         .args(["mount", &uri(host, share)])
         .stdin(Stdio::piped())
@@ -69,6 +76,11 @@ pub fn mount(host: &str, share: &str, user: &str, password: &str) -> Result<(), 
     } else {
         Err(msg)
     }
+}
+
+/// Most Linux panels are dark; there is no portable way to ask.
+pub fn taskbar_is_dark() -> bool {
+    true
 }
 
 pub fn unmount(_host: &str, m: &Mounted) -> Result<(), String> {

@@ -14,6 +14,7 @@ const els = {
   shares: $("shares"),
   autostart: $("autostart"),
   autoUpdate: $("auto-update"),
+  trayIcon: $("tray-icon"),
   error: $("error"),
   save: $("save"),
   sync: $("sync"),
@@ -31,6 +32,10 @@ let state = null;
 // state, so a background refresh never undoes an unsaved click.
 let picked = new Set();
 let formLoaded = false;
+// Windows only: chosen drive letter per share (lower-cased name -> "X").
+let letters = {};
+// The share whose drive-letter picker is open, if any.
+let openPicker = null;
 
 function showError(message) {
   els.error.textContent = message || "";
@@ -96,6 +101,21 @@ function renderShares() {
     name.append(title, detail);
     li.append(name);
 
+    if (state.drive_letters_supported) {
+      const cog = document.createElement("button");
+      cog.type = "button";
+      cog.className = "small cog";
+      cog.textContent = "\u2699";
+      cog.title = "Choose drive letter";
+      cog.setAttribute("aria-label", `Choose drive letter for ${share.name}`);
+      cog.setAttribute("aria-expanded", String(openPicker === share.name));
+      cog.addEventListener("click", () => {
+        openPicker = openPicker === share.name ? null : share.name;
+        renderShares();
+      });
+      li.append(cog);
+    }
+
     if (share.mounted) {
       const open = document.createElement("button");
       open.type = "button";
@@ -107,7 +127,45 @@ function renderShares() {
       li.append(open);
     }
     els.shares.append(li);
+    if (state.drive_letters_supported && openPicker === share.name) {
+      els.shares.append(letterPicker(share));
+    }
   }
+}
+
+// The row shown under a share when its cog is clicked.
+function letterPicker(share) {
+  const key = share.name.toLowerCase();
+  const taken = new Set(
+    Object.entries(letters)
+      .filter(([k]) => k !== key)
+      .map(([, v]) => v)
+  );
+  const li = document.createElement("li");
+  li.className = "picker";
+  const label = document.createElement("label");
+  label.textContent = "Drive letter ";
+  const select = document.createElement("select");
+  const auto = new Option("Automatic", "");
+  select.append(auto);
+  for (let code = 90; code >= 68; code--) {
+    const letter = String.fromCharCode(code);
+    const option = new Option(`${letter}:`, letter);
+    option.disabled = taken.has(letter);
+    select.append(option);
+  }
+  select.value = letters[key] || "";
+  select.addEventListener("change", () => {
+    if (select.value) letters[key] = select.value;
+    else delete letters[key];
+    note.hidden = false;
+  });
+  label.append(select);
+  const note = document.createElement("small");
+  note.textContent = "Click Save to apply.";
+  note.hidden = true;
+  li.append(label, note);
+  return li;
 }
 
 function render(next) {
@@ -130,7 +188,9 @@ function render(next) {
     els.modePick.checked = state.config.chosen && !state.config.map_all;
     els.autostart.checked = state.config.autostart;
     els.autoUpdate.checked = state.config.auto_update;
+    els.trayIcon.value = state.config.tray_icon === "minimal" ? "minimal" : "color";
     picked = new Set(state.config.selected);
+    letters = { ...state.config.drive_letters };
   }
   renderShares();
 }
@@ -161,6 +221,8 @@ $("form").addEventListener("submit", async (event) => {
         selected: [...picked],
         autostart: els.autostart.checked,
         auto_update: els.autoUpdate.checked,
+        tray_icon: els.trayIcon.value,
+        drive_letters: letters,
       },
     });
     els.password.value = "";
