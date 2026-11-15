@@ -3,6 +3,20 @@
 A small tray app for Windows, macOS and Linux that keeps the shares on a
 [HexOS](https://hexos.com) server mounted on your computer.
 
+## Download
+
+These links always fetch the newest version.
+
+| Your computer | Download |
+|---|---|
+| Mac with Apple Silicon (M1 or newer) | [Hexy-Endpoint-macOS-Apple-Silicon.dmg](https://github.com/Dimtar/hexy-endpoint/releases/latest/download/Hexy-Endpoint-macOS-Apple-Silicon.dmg) |
+| Mac with an Intel processor | [Hexy-Endpoint-macOS-Intel.dmg](https://github.com/Dimtar/hexy-endpoint/releases/latest/download/Hexy-Endpoint-macOS-Intel.dmg) |
+| Windows | [Hexy-Endpoint-Windows.exe](https://github.com/Dimtar/hexy-endpoint/releases/latest/download/Hexy-Endpoint-Windows.exe) |
+| Linux | [AppImage](https://github.com/Dimtar/hexy-endpoint/releases/latest/download/Hexy-Endpoint-Linux.AppImage) · [.deb](https://github.com/Dimtar/hexy-endpoint/releases/latest/download/Hexy-Endpoint-Linux.deb) · [.rpm](https://github.com/Dimtar/hexy-endpoint/releases/latest/download/Hexy-Endpoint-Linux.rpm) |
+
+Not sure which Mac you have? Apple menu → **About This Mac**: "Chip" means
+Apple Silicon, "Processor" means Intel. Then see [Using it](#using-it).
+
 Give it your server's address and a HexOS username and password. It then:
 
 - lists the shares that account can see and asks whether to mount all of them or only the ones you tick;
@@ -20,15 +34,9 @@ The screenshots below show the app with sample data.
 
 ### 1. Install
 
-Download the installer for your computer from the
-[latest release](https://github.com/Dimtar/hexy-endpoint/releases/latest):
-
-| Computer | File |
-|---|---|
-| Mac with Apple Silicon (M1 or newer) | `Hexy.Endpoint_<version>_aarch64.dmg` |
-| Mac with an Intel processor | `Hexy.Endpoint_<version>_x64.dmg` |
-| Windows | `Hexy.Endpoint_<version>_x64-setup.exe` |
-| Linux | `.AppImage`, `.deb` or `.rpm` |
+Download the installer for your computer from the [Download](#download)
+section at the top of this page. Older versions are on the
+[releases page](https://github.com/Dimtar/hexy-endpoint/releases).
 
 The app is not signed with a paid Apple or Microsoft certificate, so the first
 launch needs one extra step:
