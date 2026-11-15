@@ -26,8 +26,8 @@
       <section>
         <h2>Server</h2>
         <label>
-          HexOS server address
-          <input id="host" placeholder="192.168.1.10" spellcheck="false" autocapitalize="off" />
+          HexOS server IP address or name
+          <input id="host" placeholder="192.168.1.10 or hexos.local" spellcheck="false" autocapitalize="off" />
         </label>
         <label>
           Username
@@ -41,14 +41,19 @@
 
       <section>
         <h2>Shares</h2>
-        <label class="row">
-          <input type="radio" name="mode" id="mode-all" value="all" />
-          Mount every share
-        </label>
-        <label class="row">
-          <input type="radio" name="mode" id="mode-pick" value="pick" />
-          Only the shares I choose
-        </label>
+        <div id="modes" hidden>
+          <p id="choose-hint" hidden>
+            Nothing is mounted yet. Choose what to mount, then click Save.
+          </p>
+          <label class="row">
+            <input type="radio" name="mode" id="mode-all" value="all" />
+            Mount every share
+          </label>
+          <label class="row">
+            <input type="radio" name="mode" id="mode-pick" value="pick" />
+            Only the shares I choose
+          </label>
+        </div>
         <ul id="shares"></ul>
       </section>
 
@@ -62,6 +67,10 @@
           <input type="checkbox" id="auto-update" />
           Install updates automatically
         </label>
+        <div class="row update-row">
+          <button type="button" id="check-update">Check for updates</button>
+          <span id="update-result" role="status"></span>
+        </div>
       </section>
 
       <p id="error" role="alert" hidden></p>

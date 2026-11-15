@@ -204,3 +204,19 @@ footer {
 [hidden] {
   display: none !important;
 }
+.update-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+#update-result {
+  color: var(--muted);
+  font-size: 12px;
+}
+#choose-hint {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--accent);
+}

@@ -9,6 +9,8 @@ const els = {
   password: $("password"),
   modeAll: $("mode-all"),
   modePick: $("mode-pick"),
+  modes: $("modes"),
+  chooseHint: $("choose-hint"),
   shares: $("shares"),
   autostart: $("autostart"),
   autoUpdate: $("auto-update"),
@@ -20,6 +22,8 @@ const els = {
   update: $("update"),
   updateText: $("update-text"),
   updateBtn: $("update-btn"),
+  checkUpdate: $("check-update"),
+  updateResult: $("update-result"),
 };
 
 let state = null;
@@ -37,12 +41,16 @@ function statusText(s) {
   if (!s.config.host || !s.has_password) return "Not signed in";
   if (s.error) return s.error;
   if (s.syncing && !s.last_sync) return `Connecting to ${s.config.host}…`;
+  if (!s.config.chosen) return `Signed in to ${s.config.host}. Nothing is mounted yet.`;
   const mounted = s.shares.filter((x) => x.mounted).length;
   return `${mounted} of ${s.shares.length} shares mounted from ${s.config.host}`;
 }
 
 function renderShares() {
   const pickMode = els.modePick.checked;
+  // The all-or-some question only makes sense once the shares are known.
+  els.modes.hidden = !state.has_password;
+  els.chooseHint.hidden = els.modeAll.checked || els.modePick.checked;
   els.shares.replaceChildren();
   if (!state.shares.length) {
     const li = document.createElement("li");
@@ -118,8 +126,8 @@ function render(next) {
     formLoaded = true;
     els.host.value = state.config.host;
     els.username.value = state.config.username;
-    els.modeAll.checked = state.config.map_all;
-    els.modePick.checked = !state.config.map_all;
+    els.modeAll.checked = state.config.chosen && state.config.map_all;
+    els.modePick.checked = state.config.chosen && !state.config.map_all;
     els.autostart.checked = state.config.autostart;
     els.autoUpdate.checked = state.config.auto_update;
     picked = new Set(state.config.selected);
@@ -128,9 +136,10 @@ function render(next) {
 }
 
 function switchMode() {
-  // Moving from "everything" to "choose" starts with everything ticked.
+  // Switching to "choose" starts from what is mounted now, so nothing
+  // changes until a box is ticked or cleared.
   if (els.modePick.checked && picked.size === 0 && state) {
-    picked = new Set(state.shares.map((s) => s.name));
+    picked = new Set(state.shares.filter((s) => s.mounted).map((s) => s.name));
   }
   renderShares();
 }
@@ -147,6 +156,7 @@ $("form").addEventListener("submit", async (event) => {
         host: els.host.value,
         username: els.username.value,
         password: els.password.value || null,
+        chosen: els.modeAll.checked || els.modePick.checked,
         map_all: els.modeAll.checked,
         selected: [...picked],
         autostart: els.autostart.checked,
@@ -167,6 +177,8 @@ els.sync.addEventListener("click", () => invoke("sync_now"));
 els.signout.addEventListener("click", async () => {
   showError("");
   picked = new Set();
+  els.modeAll.checked = false;
+  els.modePick.checked = false;
   render(await invoke("sign_out"));
 });
 
@@ -179,6 +191,21 @@ els.updateBtn.addEventListener("click", async () => {
     showError(`Update failed: ${err}`);
     els.updateBtn.disabled = false;
     els.updateBtn.textContent = "Install and restart";
+  }
+});
+
+els.checkUpdate.addEventListener("click", async () => {
+  els.checkUpdate.disabled = true;
+  els.updateResult.textContent = "Checking…";
+  try {
+    const version = await invoke("check_for_update");
+    els.updateResult.textContent = version
+      ? `Version ${version} is available.`
+      : "You have the latest version.";
+  } catch (err) {
+    els.updateResult.textContent = `Could not check: ${err}`;
+  } finally {
+    els.checkUpdate.disabled = false;
   }
 });
 

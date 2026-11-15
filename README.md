@@ -5,7 +5,7 @@ A small tray app for Windows, macOS and Linux that keeps the shares on a
 
 Give it your server's address and a HexOS username and password. It then:
 
-- mounts every share that account can see (the default), or only the ones you tick;
+- lists the shares that account can see and asks whether to mount all of them or only the ones you tick;
 - starts when you log in and stays in the system tray;
 - asks the server for its share list once a minute, mounting shares that were
   added and unmounting ones that were removed;
@@ -13,6 +13,101 @@ Give it your server's address and a HexOS username and password. It then:
 
 It only ever unmounts shares it mounted itself, so anything you mounted by hand
 is left alone.
+
+## Using it
+
+The screenshots below show the app with sample data.
+
+### 1. Install
+
+Download the installer for your computer from the
+[latest release](https://github.com/Dimtar/hexy-endpoint/releases/latest):
+
+| Computer | File |
+|---|---|
+| Mac with Apple Silicon (M1 or newer) | `Hexy.Endpoint_<version>_aarch64.dmg` |
+| Mac with an Intel processor | `Hexy.Endpoint_<version>_x64.dmg` |
+| Windows | `Hexy.Endpoint_<version>_x64-setup.exe` |
+| Linux | `.AppImage`, `.deb` or `.rpm` |
+
+The app is not signed with a paid Apple or Microsoft certificate, so the first
+launch needs one extra step:
+
+- **macOS:** drag the app to Applications and open it. macOS will say it cannot
+  verify the developer. Open **System Settings → Privacy & Security**, scroll
+  down, and click **Open Anyway**. If macOS instead says the app "is damaged",
+  run `xattr -cr "/Applications/Hexy Endpoint.app"` in Terminal and open it again.
+- **Windows:** on the SmartScreen warning, click **More info**, then **Run anyway**.
+
+### 2. Sign in
+
+Enter your HexOS server's IP address or name, and the username and password
+of a HexOS account that has access to the shares. Click **Save**.
+
+<img src="docs/images/signin.png" width="380" alt="The sign-in window, with fields for server address, username and password">
+
+The address is just the host, for example `192.168.1.10` or `hexos.local`,
+with no `smb://`. The account does not need to be an admin.
+
+### 3. Choose what to mount
+
+Signing in only lists the shares the account can see. Nothing is mounted until
+you choose:
+
+<img src="docs/images/choose.png" width="380" alt="The window after signing in, listing four unmounted shares and asking what to mount">
+
+- **Mount every share** mounts everything on the server, including shares
+  added to it later.
+- **Only the shares I choose** lets you tick the ones you want. A share added
+  to the server later is listed but not mounted until you tick it.
+
+Pick one and click **Save**. The chosen shares mount within a few seconds and
+show a green dot. **Open** shows a share in your file manager.
+
+<img src="docs/images/pick.png" width="380" alt="The window with two of four shares ticked and mounted">
+
+You can change the choice at any time: switch mode or tick and untick shares,
+then click **Save**. Shares you untick are unmounted.
+
+<img src="docs/images/all.png" width="380" alt="The window with Mount every share selected and all four shares mounted">
+
+### Where the shares appear
+
+- **macOS:** each share is a volume at `/Volumes/<share name>`. In Finder they
+  are listed under **Locations** in the sidebar (under the server's name), and
+  via **Go → Computer**. If a volume of that name already exists, macOS adds a
+  number, for example `/Volumes/Media-1`.
+- **Windows:** each share gets a drive letter, starting at `Z:` and working
+  backwards, under **This PC** in Explorer.
+- **Linux:** each share appears in your file manager's network locations.
+
+### Day to day
+
+- **It lives in the system tray** (the menu bar on macOS). Closing the window
+  does not quit the app. The tray menu has **Open Hexy Endpoint**, **Sync Now**,
+  **Check for Updates** and **Quit**.
+- **It follows the server.** Once a minute it re-reads the share list, mounting
+  shares that were added and unmounting ones that were removed. **Sync now**
+  does that immediately.
+- **It starts when you log in**, without showing the window. Untick
+  **Start when I log in** to turn that off.
+- **It keeps itself up to date.** Untick **Install updates automatically** if
+  you would rather be asked, and use **Check for updates** to look for a new
+  version at any time.
+- **Sign out** unmounts the shares the app mounted and forgets the password.
+- **Quit** leaves the shares mounted until you log out or eject them.
+
+### If something goes wrong
+
+The line under the app's name says what the problem is.
+
+| Message | What to check |
+|---|---|
+| The server rejected the username or password | The account exists in HexOS and the password is right. Re-enter it and click **Save**. |
+| Could not find a server called … | The server name is spelled correctly, or use its IP address instead. |
+| Could not reach the server | The address is right and this computer is on the same network as the server. |
+| The server has more shares than this version can list | The server has more than a few dozen shares, which is not supported yet. |
+| A red dot next to one share | The message beside it says why that share could not be mounted; usually the account has no access to it. |
 
 ## How it works
 

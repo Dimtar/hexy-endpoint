@@ -111,6 +111,8 @@ fn describe(host: &str, e: smb::Error) -> String {
     let lower = text.to_lowercase();
     if lower.contains("logon") || lower.contains("access denied") || lower.contains("password") {
         "The server rejected the username or password.".into()
+    } else if lower.contains("invalid address") {
+        format!("Could not find a server called {host}.")
     } else if lower.contains("refused")
         || lower.contains("unreachable")
         || lower.contains("timed out")

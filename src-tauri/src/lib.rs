@@ -23,7 +23,10 @@ const KEYRING_ACCOUNT: &str = "smb-password";
 struct Config {
     host: String,
     username: String,
-    /// Mount every share the server offers (the default).
+    /// Whether the user has decided what to mount. Until they have, shares
+    /// are listed but nothing is mounted.
+    chosen: bool,
+    /// Mount every share the server offers.
     map_all: bool,
     /// Shares to mount when `map_all` is off.
     selected: BTreeSet<String>,
@@ -39,6 +42,7 @@ impl Default for Config {
         Self {
             host: String::new(),
             username: String::new(),
+            chosen: false,
             map_all: true,
             selected: BTreeSet::new(),
             autostart: true,
@@ -155,7 +159,10 @@ async fn reconcile(config: &Config, password: &str) -> Result<SyncResult, String
     let remote = remote::list_shares(&config.host, &config.username, password).await?;
     let wanted: BTreeSet<String> = remote
         .iter()
-        .filter(|s| config.map_all || config.selected.iter().any(|sel| key(sel) == key(&s.name)))
+        .filter(|s| {
+            config.chosen
+                && (config.map_all || config.selected.iter().any(|sel| key(sel) == key(&s.name)))
+        })
         .map(|s| key(&s.name))
         .collect();
 
@@ -346,6 +353,7 @@ struct SettingsInput {
     host: String,
     username: String,
     password: Option<String>,
+    chosen: bool,
     map_all: bool,
     selected: BTreeSet<String>,
     autostart: bool,
@@ -362,7 +370,7 @@ fn save_settings(app: AppHandle, input: SettingsInput) -> Result<Snapshot, Strin
     let host = input.host.trim().to_string();
     let username = input.username.trim().to_string();
     if !valid_host(&host) {
-        return Err("Enter the server's IP address or hostname, without smb:// or slashes.".into());
+        return Err("Enter the server's IP address or name, without smb:// or slashes.".into());
     }
     if username.is_empty() {
         return Err("Enter a username.".into());
@@ -392,6 +400,8 @@ fn save_settings(app: AppHandle, input: SettingsInput) -> Result<Snapshot, Strin
         }
         inner.config.host = host;
         inner.config.username = username;
+        // A choice made for one server does not carry over to another.
+        inner.config.chosen = input.chosen && !server_changed;
         inner.config.map_all = input.map_all;
         inner.config.selected = input.selected;
         inner.config.autostart = input.autostart;
@@ -431,6 +441,9 @@ fn sign_out(app: AppHandle) -> Snapshot {
         let mut inner = shared.inner.lock().unwrap();
         inner.shares.clear();
         inner.error = None;
+        inner.config.chosen = false;
+        inner.config.selected.clear();
+        save_config(&shared, &inner.config);
     }
     publish(&app);
     snapshot(&app)
@@ -449,6 +462,13 @@ fn open_share(app: AppHandle, name: String) -> Result<(), String> {
         .find(|m| key(&m.share) == key(&name))
         .ok_or("That share is not mounted.")?;
     platform::open(&host, &m)
+}
+
+/// Looks for a newer version without installing it; the window then offers
+/// the install.
+#[tauri::command]
+async fn check_for_update(app: AppHandle) -> Result<Option<String>, String> {
+    check_update(&app, false).await
 }
 
 #[tauri::command]
@@ -472,6 +492,7 @@ pub fn run() {
             sign_out,
             sync_now,
             open_share,
+            check_for_update,
             install_update
         ])
         .setup(|app| {
