@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Hexy Endpoint</vendor>
+  <vendor_url>https://github.com/Dimtar/hexy-endpoint</vendor_url>
+
+  <!--
+    Lets the user logged in at this computer mount and unmount HexOS shares
+    without a password prompt, the way removable drives are handled. The
+    helper only mounts under /run/hexy-endpoint/<uid>, always nosuid,nodev.
+    Remote and inactive sessions need an administrator's password.
+  -->
+  <action id="com.dimtar.hexy-endpoint.mount">
+    <description>Mount HexOS shares</description>
+    <message>Authentication is required to mount HexOS shares</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/hexy-endpoint/hexy-endpoint-mount-helper</annotate>
+  </action>
+</policyconfig>

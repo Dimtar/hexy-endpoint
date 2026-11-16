@@ -36,7 +36,29 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "linux": {
+      "deb": {
+        "depends": [
+          "cifs-utils",
+          "pkexec | policykit-1"
+        ],
+        "files": {
+          "/usr/lib/hexy-endpoint/hexy-endpoint-mount-helper": "target/release/hexy-endpoint-mount-helper",
+          "/usr/share/polkit-1/actions/com.dimtar.hexy-endpoint.policy": "linux/com.dimtar.hexy-endpoint.policy"
+        }
+      },
+      "rpm": {
+        "depends": [
+          "cifs-utils",
+          "polkit"
+        ],
+        "files": {
+          "/usr/lib/hexy-endpoint/hexy-endpoint-mount-helper": "target/release/hexy-endpoint-mount-helper",
+          "/usr/share/polkit-1/actions/com.dimtar.hexy-endpoint.policy": "linux/com.dimtar.hexy-endpoint.policy"
+        }
+      }
+    }
   },
   "plugins": {
     "updater": {

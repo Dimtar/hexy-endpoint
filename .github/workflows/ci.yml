@@ -25,3 +25,46 @@ jobs:
           workspaces: src-tauri
       - run: cargo test
         working-directory: src-tauri
+
+  # Builds the .deb, installs it, and mounts a share from a local Samba
+  # server through the packaged root helper. Kernel mounts cannot be tested
+  # anywhere else.
+  linux-mount:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config patchelf samba
+          sudo apt-get install -y "linux-modules-extra-$(uname -r)" || true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - name: Build the .deb
+        run: npx tauri build --bundles deb
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      - name: Install the .deb
+        run: |
+          dpkg -c src-tauri/target/release/bundle/deb/*.deb
+          sudo apt-get install -y ./src-tauri/target/release/bundle/deb/*.deb
+          test -x /usr/lib/hexy-endpoint/hexy-endpoint-mount-helper
+          test -f /usr/share/polkit-1/actions/com.dimtar.hexy-endpoint.policy
+          pkaction --verbose --action-id com.dimtar.hexy-endpoint.mount
+      - name: Mount a share through the helper
+        run: scripts/test-linux-mount.sh
+      - name: List shares from the app's code
+        working-directory: src-tauri
+        run: |
+          password="list-test-$RANDOM-$RANDOM"
+          printf '%s\n%s\n' "$password" "$password" | sudo smbpasswd -a -s "$(id -un)" > /dev/null
+          HEXY_TEST_HOST=127.0.0.1 HEXY_TEST_USER="$(id -un)" HEXY_TEST_PASS="$password" \
+            HEXY_TEST_EXPECT="Test Share" cargo test lists_shares -- --ignored --nocapture
