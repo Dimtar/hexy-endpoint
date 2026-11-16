@@ -12,7 +12,9 @@ These links always fetch the newest version.
 | Mac with Apple Silicon (M1 or newer) | [Hexy-Endpoint-macOS-Apple-Silicon.dmg](https://github.com/Dimtar/hexy-endpoint/releases/latest/download/Hexy-Endpoint-macOS-Apple-Silicon.dmg) |
 | Mac with an Intel processor | [Hexy-Endpoint-macOS-Intel.dmg](https://github.com/Dimtar/hexy-endpoint/releases/latest/download/Hexy-Endpoint-macOS-Intel.dmg) |
 | Windows | [Hexy-Endpoint-Windows.exe](https://github.com/Dimtar/hexy-endpoint/releases/latest/download/Hexy-Endpoint-Windows.exe) |
-| Linux | [AppImage](https://github.com/Dimtar/hexy-endpoint/releases/latest/download/Hexy-Endpoint-Linux.AppImage) · [.deb](https://github.com/Dimtar/hexy-endpoint/releases/latest/download/Hexy-Endpoint-Linux.deb) · [.rpm](https://github.com/Dimtar/hexy-endpoint/releases/latest/download/Hexy-Endpoint-Linux.rpm) |
+| Linux: Debian, Ubuntu, Mint | [Hexy-Endpoint-Linux.deb](https://github.com/Dimtar/hexy-endpoint/releases/latest/download/Hexy-Endpoint-Linux.deb) |
+| Linux: Fedora, openSUSE | [Hexy-Endpoint-Linux.rpm](https://github.com/Dimtar/hexy-endpoint/releases/latest/download/Hexy-Endpoint-Linux.rpm) |
+| Linux: anything else | [Hexy-Endpoint-Linux.AppImage](https://github.com/Dimtar/hexy-endpoint/releases/latest/download/Hexy-Endpoint-Linux.AppImage) (limited, see [Linux notes](#linux-notes)) |
 
 Not sure which Mac you have? Apple menu → **About This Mac**: "Chip" means
 Apple Silicon, "Processor" means Intel. Then see [Using it](#using-it).
@@ -87,7 +89,9 @@ then click **Save**. Shares you untick are unmounted.
   number, for example `/Volumes/Media-1`.
 - **Windows:** each share gets a drive letter, starting at `Z:` and working
   backwards, under **This PC** in Explorer.
-- **Linux:** each share appears in your file manager's network locations.
+- **Linux:** each share is a folder in `~/HexOS`, for example `~/HexOS/Media`.
+  (With the AppImage they appear in your file manager's network locations
+  instead; see [Linux notes](#linux-notes).)
 
 ### Choosing drive letters (Windows)
 
@@ -130,6 +134,7 @@ The line under the app's name says what the problem is.
 | Could not find a server called … | The server name is spelled correctly, or use its IP address instead. |
 | Could not reach the server | The address is right and this computer is on the same network as the server. |
 | The server has more shares than this version can list | The server has more than a few dozen shares, which is not supported yet. |
+| This desktop cannot mount shares for the AppImage | You are using the AppImage on a desktop without gvfs SMB support. Install the `.deb` or `.rpm` instead. |
 | A red dot next to one share | The message beside it says why that share could not be mounted; usually the account has no access to it. |
 
 ## How it works
@@ -138,16 +143,43 @@ The line under the app's name says what the problem is.
 |---|---|---|---|
 | macOS | SMB (built in) | NetFS framework | `/Volumes/<share>` |
 | Windows | SMB (built in) | Windows networking API | Drive letters, from `Z:` downwards or as chosen |
-| Linux | SMB (built in) | `gio mount` (gvfs) | Your file manager's network locations |
+| Linux (.deb, .rpm) | SMB (built in) | Kernel CIFS client, via a root helper | `~/HexOS/<share>` |
+| Linux (AppImage) | SMB (built in) | `gio mount` (gvfs) | Your file manager's network locations |
 
 Shares are discovered over SMB itself, so any account that can open the shares
 works; it does not need to be a HexOS admin. The password is stored in the
 operating system's keychain (Keychain, Credential Manager, or Secret Service),
 never in the config file and never on a command line.
 
-Linux needs the gvfs SMB backend (`gvfs-smb` or `gvfs-backends`, depending on
-the distribution) and a Secret Service provider such as GNOME Keyring or
-KWallet. Auto-update on Linux works for the AppImage build only.
+### Linux notes
+
+Install the `.deb` or `.rpm` if your distribution can use one. Mounting a
+network share properly on Linux needs root, and those packages install what
+makes that work without asking for a password:
+
+- **A small helper**, `/usr/lib/hexy-endpoint/hexy-endpoint-mount-helper`,
+  that mounts shares with the kernel's CIFS client (`mount.cifs`, from
+  `cifs-utils`, which the packages pull in).
+- **A polkit rule** that lets the person logged in at the computer run that
+  helper. Remote sessions are asked for an administrator's password.
+
+Shares are mounted under `/run/hexy-endpoint/<your user id>/`, and the app
+makes `~/HexOS` a link to that folder. They are ordinary folders, so they work
+in every application and file manager on any desktop. The helper only mounts
+into that one folder, always with `nosuid` and `nodev`, with files owned by
+you and not readable by other users; its source is
+[one short file](src-tauri/src/bin/hexy-endpoint-mount-helper.rs).
+
+The AppImage cannot install a helper, so it falls back to `gio mount`. That
+needs the gvfs SMB backend (`gvfs-smb` or `gvfs-backends`) and so mostly works
+on GNOME-style desktops; on KDE and others the app will say it cannot mount.
+
+All three builds update themselves. For the `.deb` and `.rpm`, installing an
+update is a system package install, so expect to be asked for an
+administrator's password when one arrives.
+
+On every Linux build the saved password needs a Secret Service provider such
+as GNOME Keyring or KWallet.
 
 ## Development
 

@@ -58,7 +58,12 @@ jobs:
           sudo apt-get install -y ./src-tauri/target/release/bundle/deb/*.deb
           test -x /usr/lib/hexy-endpoint/hexy-endpoint-mount-helper
           test -f /usr/share/polkit-1/actions/com.dimtar.hexy-endpoint.policy
-          pkaction --verbose --action-id com.dimtar.hexy-endpoint.mount
+          dpkg -s hexy-endpoint | grep Depends
+          command -v mount.cifs
+          # pkaction's exit status is unreliable; check what it prints.
+          rule="$(pkaction --verbose --action-id com.dimtar.hexy-endpoint.mount || true)"
+          echo "$rule"
+          echo "$rule" | grep -Eq 'implicit active: +yes'
       - name: Mount a share through the helper
         run: scripts/test-linux-mount.sh
       - name: List shares from the app's code
