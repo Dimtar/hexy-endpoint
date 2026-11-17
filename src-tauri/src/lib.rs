@@ -108,6 +108,60 @@ fn load_password() -> Option<String> {
     keyring_entry().ok()?.get_password().ok()
 }
 
+/// macOS ties a keychain item to the exact build that created it when the
+/// app has no Apple Team ID, so every update would be asked for the login
+/// keychain password. To avoid that, the outgoing version moves the password
+/// into a file only the user can read and deletes its keychain item, and the
+/// incoming version puts it back into the keychain as its own item on start.
+/// The file exists only for the few seconds the update takes.
+fn handoff_path(app: &AppHandle) -> Option<PathBuf> {
+    Some(app.path().app_config_dir().ok()?.join("password-handoff"))
+}
+
+#[cfg(target_os = "macos")]
+fn hand_password_to_next_version(app: &AppHandle) {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let (Some(path), Some(password)) = (handoff_path(app), load_password()) else {
+        return;
+    };
+    let written = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&path)
+        .and_then(|mut f| f.write_all(password.as_bytes()));
+    match written {
+        Ok(()) => {
+            if let Ok(entry) = keyring_entry() {
+                let _ = entry.delete_credential();
+            }
+        }
+        Err(_) => {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn hand_password_to_next_version(_app: &AppHandle) {}
+
+/// Puts a password handed over by `hand_password_to_next_version` back into
+/// the keychain. Also used to undo the handover when an update fails.
+fn take_handed_password(app: &AppHandle) {
+    let Some(path) = handoff_path(app) else { return };
+    let Ok(password) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    if !password.is_empty() {
+        if let Ok(entry) = keyring_entry() {
+            let _ = entry.set_password(&password);
+        }
+    }
+    let _ = std::fs::remove_file(&path);
+}
+
 fn key(name: &str) -> String {
     name.to_lowercase()
 }
@@ -375,10 +429,15 @@ async fn check_update(app: &AppHandle, install: bool) -> Result<Option<String>, 
     app.state::<Shared>().inner.lock().unwrap().update = Some(version.clone());
     publish(app);
     if install {
-        update
-            .download_and_install(|_, _| {}, || {})
+        let bytes = update
+            .download(|_, _| {}, || {})
             .await
             .map_err(|e| e.to_string())?;
+        hand_password_to_next_version(app);
+        if let Err(e) = update.install(bytes) {
+            take_handed_password(app);
+            return Err(e.to_string());
+        }
         app.restart();
     }
     Ok(Some(version))
@@ -411,6 +470,11 @@ fn apply_autostart(app: &AppHandle, enabled: bool) {
         return;
     }
     let launcher = app.autolaunch();
+    // Rewriting an existing login item makes macOS announce it again
+    // ("can run in the background"), so leave it alone if it is in place.
+    if launcher.is_enabled().is_ok_and(|on| on == enabled) {
+        return;
+    }
     let result = if enabled {
         launcher.enable()
     } else {
@@ -628,6 +692,7 @@ pub fn run() {
                 .and_then(|s| serde_json::from_str(&s).ok())
                 .unwrap_or_default();
             let (tx, rx) = unbounded_channel();
+            take_handed_password(&handle);
             let signed_in = !config.host.is_empty() && load_password().is_some();
             let autostart = config.autostart;
             let tray_style = config.tray_icon.clone();
